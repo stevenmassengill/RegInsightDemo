@@ -6,6 +6,9 @@ param location string = 'eastus'
 // ID. uniqueString() returns a 13-character value, so the prefix portion must
 // be no more than 9 characters to stay within the limit.
 var saPrefix = toLower(substring(prefix, 0, 9))
+// Unique suffix derived from the resource group ensures the storage account
+// name remains globally unique while staying within the 24 character limit.
+var saSuffix = uniqueString(resourceGroup().id)
 
 /* 
   The resource group must be created at the subscription scope.
@@ -36,10 +39,10 @@ resource openai 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
 }
 
 resource sa 'Microsoft.Storage/storageAccounts@2023-01-01' = {
-  // Compose the storage account name from the shortened prefix, 'sa', and a
-  // deterministic unique string. This ensures the name meets the length and
-  // character requirements while remaining unique within Azure.
-  name: '${saPrefix}sa'
+  // Compose the storage account name from the shortened prefix, 'sa', and the
+  // deterministic unique suffix. This keeps the name under 24 characters and
+  // uses only lower-case letters and numbers.
+  name: '${saPrefix}sa${saSuffix}'
   location: location
   sku: {
     name: 'Standard_LRS'
