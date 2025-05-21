@@ -144,14 +144,36 @@ def build_index():
                 VectorField,
             )
             
-            fields = [
-                SimpleField(name="id", type="Edm.String", key=True),
-                SearchableField(name="content", type="Edm.String"),
-                VectorField(
+            # First see if VectorField supports profile name
+            try:
+                vector_field = VectorField(
+                    name="vector", 
+                    vector_dimensions=1536,
+                    vector_search_configuration="myHnsw",
+                    vector_search_profile_name="myHnsw"  # Add profile name
+                )
+                print("Created VectorField with profile_name")
+            except TypeError:
+                # Fall back to basic constructor
+                vector_field = VectorField(
                     name="vector", 
                     vector_dimensions=1536,
                     vector_search_configuration="myHnsw"
                 )
+                
+                # Try to set profile name after construction
+                try:
+                    vector_field.vector_search_profile_name = "myHnsw"
+                    print("Set vector_search_profile_name after construction")
+                except AttributeError:
+                    if hasattr(vector_field, 'additional_properties'):
+                        vector_field.additional_properties["vectorSearchProfile"] = "myHnsw"
+                        print("Set vectorSearchProfile via additional_properties") 
+            
+            fields = [
+                SimpleField(name="id", type="Edm.String", key=True),
+                SearchableField(name="content", type="Edm.String"),
+                vector_field
             ]
             
             # Debug vector field properties
@@ -211,13 +233,25 @@ def build_index():
                 # Set the proper dimension parameter based on what we detected
                 setattr(vector_field, dimension_param_name, 1536)
                 
-                # Try to set the vector search configuration 
+                # Set needed vector search properties
                 try:
-                    vector_field.vector_search_configuration = "myHnsw"
-                except AttributeError:
-                    # Try alternate approach
+                    # The "profile name" is what determines how the vector field is used in search
+                    # Set vector_search_profile_name first (newer API requirement)
+                    if hasattr(vector_field, "vector_search_profile_name"):
+                        vector_field.vector_search_profile_name = "myHnsw"
+                        print("Set vector_search_profile_name property")
+                    
+                    # Then set configuration
+                    if hasattr(vector_field, "vector_search_configuration"):
+                        vector_field.vector_search_configuration = "myHnsw"
+                        print("Set vector_search_configuration property")
+                except AttributeError as e:
+                    print(f"Error setting vector properties: {e}")
+                    # Try alternate approach with additional_properties
                     if hasattr(vector_field, 'additional_properties'):
+                        vector_field.additional_properties["vectorSearchProfile"] = "myHnsw"
                         vector_field.additional_properties["vectorSearchConfiguration"] = "myHnsw"
+                        print("Set vector search properties via additional_properties")
             else:
                 # Fallback - create with best guess parameters
                 vector_field = SearchField(
@@ -225,11 +259,22 @@ def build_index():
                     type=SearchFieldDataType.Collection(SearchFieldDataType.Single)
                 )
                 
-                # Add key properties to additional_properties if available
-                if hasattr(vector_field, 'additional_properties'):
-                    vector_field.additional_properties["dimensions"] = 1536
-                    vector_field.additional_properties["vectorSearchConfiguration"] = "myHnsw"
-                    print("Set vector field properties via additional_properties")
+                # Add key properties via direct assignment if possible
+                try:
+                    if hasattr(vector_field, "vector_search_dimensions"):
+                        vector_field.vector_search_dimensions = 1536
+                    if hasattr(vector_field, "vector_search_profile_name"):
+                        vector_field.vector_search_profile_name = "myHnsw"
+                    if hasattr(vector_field, "vector_search_configuration"):
+                        vector_field.vector_search_configuration = "myHnsw"
+                    print("Set vector field properties via direct assignment")
+                except AttributeError:
+                    # Fall back to additional_properties
+                    if hasattr(vector_field, 'additional_properties'):
+                        vector_field.additional_properties["dimensions"] = 1536
+                        vector_field.additional_properties["vectorSearchProfile"] = "myHnsw"
+                        vector_field.additional_properties["vectorSearchConfiguration"] = "myHnsw"
+                        print("Set vector field properties via additional_properties")
             
             fields = [
                 SimpleField(name="id", type="Edm.String", key=True),
@@ -348,6 +393,7 @@ def build_index():
                             "type": "Collection(Edm.Single)",
                             "searchable": False,
                             "dimensions": 1536,
+                            "vectorSearchProfile": "myHnsw",
                             "vectorSearchConfiguration": "myHnsw"
                         }
                     ],
