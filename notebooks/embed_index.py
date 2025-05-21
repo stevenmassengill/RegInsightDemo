@@ -100,6 +100,34 @@ def chunk_text(text, max_tokens=800):
     return chunks
 
 def build_index():
+    # First check SDK version and try to determine vector field parameters
+    print(f"Azure Search SDK version: {sdk_version}")
+    
+    # Parameters that should work across versions
+    dimensions_param = None
+    dimension_param_name = None
+    
+    # Try to find the right way to specify dimensions based on SDK version
+    try:
+        from azure.search.documents.indexes.models import SearchField
+        field = SearchField(name="test", type="Edm.String")
+        
+        # Check what parameters would work
+        for param in ["vector_search_dimensions", "vector_dimensions", "dimensions"]:
+            try:
+                # Try setting this parameter and see if it works
+                setattr(field, param, 1536)
+                dimensions_param = 1536
+                dimension_param_name = param
+                print(f"Successfully used {param} parameter")
+                break
+            except (AttributeError, TypeError):
+                continue
+    except Exception as e:
+        print(f"Field parameter check error: {e}")
+        
+    print(f"Will use dimension parameter: {dimension_param_name}")
+        
     index_client = SearchIndexClient(
         SEARCH_ENDPOINT, AzureKeyCredential(SEARCH_KEY))
     
@@ -125,6 +153,21 @@ def build_index():
                     vector_search_configuration="myHnsw"
                 )
             ]
+            
+            # Debug vector field properties
+            vector_field = fields[2]
+            print(f"Vector field type: {type(vector_field)}")
+            
+            # Display all properties
+            if hasattr(vector_field, '__dict__'):
+                print(f"Vector field properties: {vector_field.__dict__}")
+            
+            # Ensure vector dimensions and config are set
+            try:
+                print(f"Vector dimensions: {vector_field.vector_dimensions}")
+                print(f"Vector search config: {vector_field.vector_search_configuration}")
+            except AttributeError as e:
+                print(f"Cannot access vector field attributes: {e}")
             
             # Create algorithm configuration with mandatory kind attribute
             algo_config = VectorSearchAlgorithmConfiguration(name="myHnsw")
@@ -154,16 +197,52 @@ def build_index():
             )
             
             print("Using SearchField-based approach")
+            # Create vector field with proper parameters
+            from azure.search.documents.indexes.models import SearchIndex, SearchField, SearchFieldDataType
+            
+            # Create a vector field with parameters that work for our SDK version
+            if dimension_param_name:
+                # Create initial field
+                vector_field = SearchField(
+                    name="vector",
+                    type=SearchFieldDataType.Collection(SearchFieldDataType.Single)
+                )
+                
+                # Set the proper dimension parameter based on what we detected
+                setattr(vector_field, dimension_param_name, 1536)
+                
+                # Try to set the vector search configuration 
+                try:
+                    vector_field.vector_search_configuration = "myHnsw"
+                except AttributeError:
+                    # Try alternate approach
+                    if hasattr(vector_field, 'additional_properties'):
+                        vector_field.additional_properties["vectorSearchConfiguration"] = "myHnsw"
+            else:
+                # Fallback - create with best guess parameters
+                vector_field = SearchField(
+                    name="vector",
+                    type=SearchFieldDataType.Collection(SearchFieldDataType.Single)
+                )
+                
+                # Add key properties to additional_properties if available
+                if hasattr(vector_field, 'additional_properties'):
+                    vector_field.additional_properties["dimensions"] = 1536
+                    vector_field.additional_properties["vectorSearchConfiguration"] = "myHnsw"
+                    print("Set vector field properties via additional_properties")
+            
             fields = [
                 SimpleField(name="id", type="Edm.String", key=True),
                 SearchableField(name="content", type="Edm.String"),
-                SearchField(
-                    name="vector",
-                    type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
-                    dimensions=1536,
-                    vector_search_configuration="myHnsw"
-                )
+                vector_field
             ]
+            
+            # Print debug info about the field
+            print(f"Vector field details - Type: {type(vector_field)}")
+            if hasattr(vector_field, "__dict__"):
+                print(f"Vector field __dict__: {vector_field.__dict__}")
+            if hasattr(vector_field, "additional_properties"):
+                print(f"Vector field additional_properties: {vector_field.additional_properties}")
             
             # Create algorithm configuration with mandatory kind attribute
             algo_config = VectorSearchAlgorithmConfiguration(name="myHnsw")
@@ -197,6 +276,40 @@ def build_index():
         
         simplified_vector_search = VectorSearch(algorithms=[simplified_algo])
         
+        # Make sure field properties are properly set for vector search
+        for i, field in enumerate(fields):
+            if field.name == "vector":
+                print(f"Re-checking vector field at index {i}")
+                
+                # Try different approaches based on SDK version
+                try:
+                    # Verify parameters are set via direct access
+                    if hasattr(field, "vector_search_dimensions"):
+                        # Newer SDK uses vector_search_dimensions
+                        if not field.vector_search_dimensions:
+                            field.vector_search_dimensions = 1536
+                            print("Set vector_search_dimensions directly")
+                    elif hasattr(field, "dimensions"):
+                        # Some SDKs use dimensions
+                        if not field.dimensions:
+                            field.dimensions = 1536
+                            print("Set dimensions directly")
+                    
+                    # Similar for configuration
+                    if hasattr(field, "vector_search_configuration"):
+                        if not field.vector_search_configuration:
+                            field.vector_search_configuration = "myHnsw"
+                            print("Set vector_search_configuration directly")
+                    
+                    # Let's also try adding these to additional_properties
+                    if hasattr(field, "additional_properties"):
+                        field.additional_properties["vectorSearchDimensions"] = 1536
+                        field.additional_properties["vectorSearchConfiguration"] = "myHnsw"
+                        print("Added to additional_properties as well")
+                
+                except Exception as e:
+                    print(f"Error setting vector field properties: {e}")
+        
         # Create the index with simplified vector search
         index = SearchIndex(name=INDEX_NAME, fields=fields, vector_search=simplified_vector_search)
         
@@ -210,6 +323,76 @@ def build_index():
                 print(json.dumps(serialized, indent=2))
         except Exception as e:
             print(f"Serialization error: {e}")
+            
+        # Last resort - try using raw JSON approach with SDK client
+        if dimension_param_name is None:
+            print("Trying raw JSON approach as last resort")
+            try:
+                # Create a minimal raw JSON definition that works with any SDK version
+                raw_index = {
+                    "name": INDEX_NAME,
+                    "fields": [
+                        {
+                            "name": "id",
+                            "type": "Edm.String",
+                            "key": True,
+                            "searchable": False
+                        },
+                        {
+                            "name": "content",
+                            "type": "Edm.String",
+                            "searchable": True
+                        },
+                        {
+                            "name": "vector",
+                            "type": "Collection(Edm.Single)",
+                            "searchable": False,
+                            "dimensions": 1536,
+                            "vectorSearchConfiguration": "myHnsw"
+                        }
+                    ],
+                    "vectorSearch": {
+                        "algorithms": [
+                            {
+                                "name": "myHnsw",
+                                "kind": "hnsw",
+                                "parameters": {
+                                    "m": 4,
+                                    "efConstruction": 400
+                                }
+                            }
+                        ]
+                    }
+                }
+                
+                print("Created raw JSON index definition")
+                print(json.dumps(raw_index, indent=2))
+                
+                # Try alternate 'create_index' method if needed
+                try:
+                    import requests
+                    
+                    print(f"Will try direct REST API call as last resort")
+                    # For debugging only - don't try this in production
+                    api_version = "2023-11-01"
+                    url = f"{SEARCH_ENDPOINT}/indexes?api-version={api_version}"
+                    headers = {
+                        "Content-Type": "application/json",
+                        "api-key": SEARCH_KEY
+                    }
+                    
+                    # Only print this for debugging 
+                    print(f"Would make POST to: {url}")
+                    
+                    # Don't actually make the REST call within these changes
+                    # response = requests.post(url, headers=headers, json=raw_index)
+                    # print(f"REST API response: {response.status_code}, {response.text}")
+                
+                except Exception as e:
+                    print(f"REST API attempt failed: {e}")
+                    
+            except Exception as e:
+                print(f"Raw JSON approach failed: {e}")
             
         # Print detailed information about our configuration
         print(f"Creating index with fields: {[f.name for f in fields]}")
