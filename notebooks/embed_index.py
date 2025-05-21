@@ -126,21 +126,20 @@ def build_index():
                 )
             ]
             
-            vector_search = VectorSearch(
-                algorithms=[
-                    VectorSearchAlgorithmConfiguration(
-                        name="myHnsw",
-                        kind="hnsw",
-                    )
-                ]
-            )
-            # Try to set parameters in a way that works with this SDK version
-            try:
-                vector_search.algorithms[0].hnsw_parameters.m = 4
-                vector_search.algorithms[0].hnsw_parameters.ef_construction = 400
-            except (AttributeError, TypeError):
-                # Different SDK versions have different parameter structures
-                print("Using alternative parameter approach")
+            # Create algorithm configuration with mandatory kind attribute
+            algo_config = VectorSearchAlgorithmConfiguration(name="myHnsw")
+            
+            # Explicitly set kind using dictionary approach to avoid attribute access issues
+            algo_config.__dict__["kind"] = "hnsw"
+            
+            vector_search = VectorSearch(algorithms=[algo_config])
+            
+            # Try to print all available attributes and their values
+            print("Available algorithm attributes:", dir(algo_config))
+            
+            # For debugging only
+            if hasattr(algo_config, "__dict__"):
+                print("Algorithm config dict:", algo_config.__dict__)
                 
         except (ImportError, AttributeError):
             # Older SDK version
@@ -166,28 +165,69 @@ def build_index():
                 )
             ]
             
-            vector_search = VectorSearch(
-                algorithms=[
-                    VectorSearchAlgorithmConfiguration(
-                        name="myHnsw",
-                        kind="hnsw"
-                    )
-                ]
-            )
-            # Only set attributes that are known to exist
-            algo = vector_search.algorithms[0]
-            try:
-                if hasattr(algo, 'hnsw_parameters'):
-                    algo.hnsw_parameters.m = 4
-                    algo.hnsw_parameters.ef_construction = 400
-            except (AttributeError, TypeError):
-                print("Warning: Could not set HNSW parameters")
+            # Create algorithm configuration with mandatory kind attribute
+            algo_config = VectorSearchAlgorithmConfiguration(name="myHnsw")
+            
+            # Explicitly set kind using dictionary approach to avoid attribute access issues
+            algo_config.__dict__["kind"] = "hnsw"
+            
+            vector_search = VectorSearch(algorithms=[algo_config])
+            
+            # Try to print all available attributes and their values
+            print("Available algorithm attributes:", dir(algo_config))
+            
+            # For debugging only
+            if hasattr(algo_config, "__dict__"):
+                print("Algorithm config dict:", algo_config.__dict__)
 
-        index = SearchIndex(name=INDEX_NAME, fields=fields, vector_search=vector_search)
+        # Create a minimal, simplified vector search configuration that works with most SDK versions
+        from azure.search.documents.indexes.models import VectorSearch, VectorSearchAlgorithmConfiguration
         
+        # Create a fresh, minimal configuration
+        simplified_algo = VectorSearchAlgorithmConfiguration(name="myHnsw")
+        
+        # Force the kind property to be set directly in the _attribute_map
+        if hasattr(simplified_algo, '_attribute_map') and isinstance(simplified_algo._attribute_map, dict):
+            print("Using _attribute_map approach")
+            if 'kind' in simplified_algo._attribute_map:
+                simplified_algo.kind = "hnsw"
+        # Direct dict assignment as backup
+        elif hasattr(simplified_algo, '__dict__'):
+            simplified_algo.__dict__["kind"] = "hnsw"
+        
+        simplified_vector_search = VectorSearch(algorithms=[simplified_algo])
+        
+        # Create the index with simplified vector search
+        index = SearchIndex(name=INDEX_NAME, fields=fields, vector_search=simplified_vector_search)
+        
+        # Try to serialize the configuration to see what's actually being sent
+        try:
+            import json
+            from msrest.serialization import Model
+            if isinstance(index, Model) and hasattr(index, "serialize"):
+                serialized = index.serialize()
+                print("\nSerialized index configuration:")
+                print(json.dumps(serialized, indent=2))
+        except Exception as e:
+            print(f"Serialization error: {e}")
+            
         # Print detailed information about our configuration
         print(f"Creating index with fields: {[f.name for f in fields]}")
-        print(f"Vector search configuration: {vector_search.algorithms[0].name}, Kind: {vector_search.algorithms[0].kind}")
+        
+        # Debug vector search configuration
+        print(f"Vector search configuration name: {vector_search.algorithms[0].name}")
+        
+        # Use try/except for getting kind as it might be accessed differently
+        try:
+            kind = vector_search.algorithms[0].kind
+            print(f"Kind attribute value: {kind}")
+        except Exception:
+            try:
+                # Try dictionary access if attribute access fails
+                kind = vector_search.algorithms[0].__dict__.get("kind")
+                print(f"Kind via __dict__: {kind}")
+            except Exception as e:
+                print(f"Cannot access kind: {e}")
         
         index_client.create_or_update_index(index)
         print(f"Successfully created index '{INDEX_NAME}'")
