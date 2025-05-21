@@ -329,8 +329,19 @@ def build_index():
         # Create a fresh, minimal vector search configuration
         simplified_algo = VectorSearchAlgorithmConfiguration(name="myHnsw")
         
-        # Force the kind property to be set
+        # Force the kind property to be set using multiple approaches
+        # Method 1: Direct attribute
         simplified_algo.kind = "hnsw"
+        
+        # Method 2: Dictionary style setting
+        if hasattr(simplified_algo, '__dict__'):
+            simplified_algo.__dict__["kind"] = "hnsw"
+            
+        # Method 3: Additional properties
+        if hasattr(simplified_algo, 'additional_properties'):
+            simplified_algo.additional_properties["kind"] = "hnsw"
+            
+        print(f"Simplified algo kind: {simplified_algo.kind}")
         
         # Add parameters if possible
         try:
@@ -403,10 +414,26 @@ def build_index():
         
         # Create a fixed vector search configuration
         try:
+            # Create the algorithm and force kind to be set
             vector_search_algo = VectorSearchAlgorithmConfiguration(
-                name="myHnsw",
-                kind="hnsw"
+                name="myHnsw"
             )
+            
+            # Force the kind field to be set using multiple approaches
+            # Method 1: Direct attribute setting
+            vector_search_algo.kind = "hnsw"
+            
+            # Method 2: Dictionary style setting
+            if hasattr(vector_search_algo, '__dict__'):
+                vector_search_algo.__dict__["kind"] = "hnsw"
+                print("Set kind via __dict__")
+                
+            # Method 3: Additional properties
+            if hasattr(vector_search_algo, 'additional_properties'):
+                vector_search_algo.additional_properties["kind"] = "hnsw"
+                print("Set kind via additional_properties")
+                
+            print(f"Kind after setting: {vector_search_algo.kind}")
             
             # Try to set parameters if supported
             try:
@@ -564,6 +591,68 @@ def build_index():
                 print(f"Kind via __dict__: {kind}")
             except Exception as e:
                 print(f"Cannot access kind: {e}")
+                
+        # If the kind is None or empty, try one last approach with direct REST API
+        if not kind:
+            print("Detected empty 'kind' value. Trying direct REST API approach")
+            try:
+                import requests, json
+                
+                # Create simple, valid JSON document for index
+                index_json = {
+                    "name": INDEX_NAME,
+                    "fields": [
+                        {
+                            "name": "id",
+                            "type": "Edm.String",
+                            "key": True,
+                            "searchable": False
+                        },
+                        {
+                            "name": "content",
+                            "type": "Edm.String",
+                            "searchable": True
+                        },
+                        {
+                            "name": "vector",
+                            "type": "Collection(Edm.Single)",
+                            "searchable": False,
+                            "vectorDimensions": 1536,
+                            "vectorSearchProfile": "myHnsw"
+                        }
+                    ],
+                    "vectorSearch": {
+                        "algorithms": [
+                            {
+                                "name": "myHnsw",
+                                "kind": "hnsw",
+                                "parameters": {
+                                    "m": 4,
+                                    "efConstruction": 400,
+                                    "efSearch": 500
+                                }
+                            }
+                        ],
+                        "profiles": [
+                            {
+                                "name": "myHnsw",
+                                "algorithm": "myHnsw"
+                            }
+                        ]
+                    }
+                }
+                
+                print(f"Would attempt direct REST API call to create index")
+                print(json.dumps(index_json, indent=2))
+                
+                # Not actually making this call, just showing it for troubleshooting
+                # url = f"{SEARCH_ENDPOINT}/indexes?api-version=2023-11-01"
+                # headers = {"Content-Type": "application/json", "api-key": SEARCH_KEY}
+                # response = requests.put(url, headers=headers, json=index_json)
+                # print(f"API response: {response.status_code}")
+                
+            except Exception as e:
+                print(f"REST API preparation error: {e}")
         
         index_client.create_or_update_index(index)
         print(f"Successfully created index '{INDEX_NAME}'")
