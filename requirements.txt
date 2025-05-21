@@ -4,3 +4,4 @@ openai
 tenacity
 tiktoken
 bs4
+packaging

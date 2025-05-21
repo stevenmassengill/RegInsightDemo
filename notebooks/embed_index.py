@@ -7,10 +7,18 @@ import openai
 from azure.core.credentials import AzureKeyCredential
 from azure.search.documents import SearchClient
 from azure.search.documents.indexes import SearchIndexClient
-from pkg_resources import get_distribution, parse_version
+try:
+    # Use importlib.metadata (modern approach) instead of deprecated pkg_resources
+    import importlib.metadata
+    get_version = lambda pkg: importlib.metadata.version(pkg)
+    from packaging.version import parse as parse_version
+except ImportError:
+    # Fallback to pkg_resources for older Python versions
+    from pkg_resources import get_distribution, parse_version
+    get_version = lambda pkg: get_distribution(pkg).version
 
 try:
-    sdk_version = get_distribution("azure-search-documents").version
+    sdk_version = get_version("azure-search-documents")
 except Exception:
     sdk_version = "unknown"
 
@@ -41,6 +49,7 @@ except ImportError:  # pragma: no cover - support older SDKs
         VectorSearchAlgorithmConfiguration,
         SearchField,
         SearchFieldDataType,
+        HnswParameters,
     )
 
     def VectorField(name, vector_dimensions, vector_search_configuration):
@@ -93,22 +102,63 @@ def chunk_text(text, max_tokens=800):
 def build_index():
     index_client = SearchIndexClient(
         SEARCH_ENDPOINT, AzureKeyCredential(SEARCH_KEY))
-    fields = [
-        SimpleField(name="id", type="Edm.String", key=True),
-        SearchableField(name="content", type="Edm.String"),
-        VectorField(name="vector", vector_dimensions=1536,
-                    vector_search_configuration="myHnsw")
-    ]
-    vector_search = VectorSearch(
-        algorithms=[VectorSearchAlgorithmConfiguration(
-            name="myHnsw",
-            kind="hnsw",
-            parameters={"m": 4, "efConstruction": 400},
-        )]
-    )
+    
+    # Check if we're using the newer SDK with VectorField
+    using_vector_field = 'VectorField' in globals()
+    
+    # Different initialization based on SDK version
+    if using_vector_field:
+        fields = [
+            SimpleField(name="id", type="Edm.String", key=True),
+            SearchableField(name="content", type="Edm.String"),
+            VectorField(name="vector", vector_dimensions=1536,
+                        vector_search_configuration="myHnsw")
+        ]
+        vector_search = VectorSearch(
+            algorithms=[VectorSearchAlgorithmConfiguration(
+                name="myHnsw",
+                kind="hnsw",
+                parameters={"m": 4, "efConstruction": 400},
+            )]
+        )
+    else:
+        # For older SDK without native vector support
+        from azure.search.documents.indexes.models import (
+            SearchField,
+            SearchFieldDataType,
+            HnswParameters,
+        )
+        fields = [
+            SimpleField(name="id", type="Edm.String", key=True),
+            SearchableField(name="content", type="Edm.String"),
+            SearchField(
+                name="vector",
+                type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
+                vector_search_dimensions=1536,
+                vector_search_configuration="myHnsw"
+            )
+        ]
+        vector_search = VectorSearch(
+            algorithms=[
+                VectorSearchAlgorithmConfiguration(
+                    name="myHnsw",
+                    kind="hnsw",
+                    hnsw_parameters=HnswParameters(
+                        m=4,
+                        ef_construction=400
+                    )
+                )
+            ]
+        )
+    
     index = SearchIndex(name=INDEX_NAME, fields=fields,
                         vector_search=vector_search)
-    index_client.create_or_update_index(index)
+    
+    try:
+        index_client.create_or_update_index(index)
+        print(f"Successfully created index '{INDEX_NAME}'")
+    except Exception as e:
+        print(f"Error creating index: {e}")
 
 def main():
     build_index()
