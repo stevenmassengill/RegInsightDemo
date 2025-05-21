@@ -23,7 +23,7 @@ resource search 'Microsoft.Search/searchServices@2023-11-01' = {
   name: '${lowerPrefix}search'
   location: location
   sku: {
-    name: 'basic'
+    name: 'standard'
   }
   properties: {
     replicaCount: 1
