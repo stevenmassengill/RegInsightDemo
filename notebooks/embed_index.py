@@ -597,7 +597,84 @@ def build_index():
         try:
             import requests, json
             
-            # Create simple, valid JSON document for index
+            # Create JSON document adjusted for the specific API version
+            # Try multiple configurations to find one that works
+            
+            # For older API versions (2020-06-30)
+            index_json_v1 = {
+                "name": INDEX_NAME,
+                "fields": [
+                    {
+                        "name": "id",
+                        "type": "Edm.String",
+                        "key": True,
+                        "searchable": False
+                    },
+                    {
+                        "name": "content",
+                        "type": "Edm.String",
+                        "searchable": True
+                    },
+                    {
+                        "name": "vector",
+                        "type": "Collection(Edm.Single)",
+                        "searchable": False,
+                        "dimensions": 1536,
+                        "vectorSearchConfiguration": "myHnsw"
+                    }
+                ],
+                "vectorSearch": {
+                    "algorithms": [
+                        {
+                            "name": "myHnsw",
+                            "kind": "hnsw",
+                            "parameters": {
+                                "m": 4,
+                                "efConstruction": 400
+                            }
+                        }
+                    ]
+                }
+            }
+            
+            # For newer API versions that use profiles
+            index_json_v2 = {
+                "name": INDEX_NAME,
+                "fields": [
+                    {
+                        "name": "id",
+                        "type": "Edm.String",
+                        "key": True,
+                        "searchable": False
+                    },
+                    {
+                        "name": "content",
+                        "type": "Edm.String",
+                        "searchable": True
+                    },
+                    {
+                        "name": "vector",
+                        "type": "Collection(Edm.Single)",
+                        "searchable": False,
+                        "dimensions": 1536,
+                        "vectorSearchConfiguration": "myHnsw"
+                    }
+                ],
+                "vectorSearch": {
+                    "algorithms": [
+                        {
+                            "name": "myHnsw",
+                            "kind": "hnsw",
+                            "hnsw": {
+                                "m": 4,
+                                "efConstruction": 400
+                            }
+                        }
+                    ]
+                }
+            }
+            
+            # Try the simplest configuration first
             index_json = {
                 "name": INDEX_NAME,
                 "fields": [
@@ -617,25 +694,14 @@ def build_index():
                         "type": "Collection(Edm.Single)",
                         "searchable": False,
                         "dimensions": 1536,
-                        "vectorSearchProfile": "myHnswProfile"
+                        "vectorSearchConfiguration": "myHnsw"
                     }
                 ],
                 "vectorSearch": {
                     "algorithms": [
                         {
                             "name": "myHnsw",
-                            "kind": "hnsw",
-                            "parameters": {
-                                "m": 4,
-                                "efConstruction": 400,
-                                "efSearch": 500
-                            }
-                        }
-                    ],
-                    "profiles": [
-                        {
-                            "name": "myHnswProfile",
-                            "algorithm": "myHnsw"
+                            "kind": "hnsw"
                         }
                     ]
                 }
@@ -644,26 +710,93 @@ def build_index():
             print(f"Attempting direct REST API call to create index")
             print(json.dumps(index_json, indent=2))
             
-            # Make the actual REST API call
-            api_version = "2023-07-01-Preview"  # Use a version known to support vector search
-            url = f"{SEARCH_ENDPOINT}/indexes/{INDEX_NAME}?api-version={api_version}"
-            headers = {
-                "Content-Type": "application/json",
-                "api-key": SEARCH_KEY
+            # Make the actual REST API call - try with multiple API versions
+            # Try several API versions, starting with ones that support vector search
+            api_versions_to_try = [
+                "2023-07-01-Preview",  # Recent version with vector search
+                "2021-04-30-Preview",  # Older but might support vector
+                "2020-06-30",          # Stable version
+                "2023-11-01",          # Newest GA version
+                "2023-10-01-Preview"   # Another recent preview
+            ]
+            
+            success = False
+            
+            # One more configuration - using older terminology
+            index_json_v3 = {
+                "name": INDEX_NAME,
+                "fields": [
+                    {
+                        "name": "id",
+                        "type": "Edm.String",
+                        "key": True,
+                        "searchable": False
+                    },
+                    {
+                        "name": "content",
+                        "type": "Edm.String",
+                        "searchable": True
+                    },
+                    {
+                        "name": "vector",
+                        "type": "Collection(Edm.Single)",
+                        "searchable": False,
+                        "vectorDimensions": 1536, 
+                        "vectorSearchConfigurationName": "myHnsw"
+                    }
+                ],
+                "vectorSearchConfigurations": [
+                    {
+                        "name": "myHnsw",
+                        "kind": "hnsw",
+                        "parameters": {
+                            "m": 4,
+                            "efConstruction": 400
+                        }
+                    }
+                ]
             }
             
-            print(f"Making PUT request to: {url}")
-            response = requests.put(url, headers=headers, json=index_json)
+            # Try each API version
+            for api_version in api_versions_to_try:
+                # Try each JSON configuration
+                for i, config in enumerate([index_json, index_json_v1, index_json_v2, index_json_v3]):
+                    try:
+                        url = f"{SEARCH_ENDPOINT}/indexes/{INDEX_NAME}?api-version={api_version}"
+                        headers = {
+                            "Content-Type": "application/json",
+                            "api-key": SEARCH_KEY
+                        }
+                        
+                        print(f"\nTrying config #{i+1} with API version {api_version}")
+                        print(f"Making PUT request to: {url}")
+                        
+                        # Use the current config
+                        response = requests.put(url, headers=headers, json=config)
+                        
+                        # Check if successful
+                        if response.status_code >= 200 and response.status_code < 300:
+                            print(f"Successfully created index via REST API: status code {response.status_code}")
+                            # No need to try other versions
+                            success = True
+                            break
+                        else:
+                            # Print error details for debugging
+                            print(f"REST API error: {response.status_code}")
+                            print(f"Response: {response.text}")
+                    except Exception as e:
+                        print(f"Error with config #{i+1}, API version {api_version}: {e}")
+                
+                # If successful with any combination, exit the loop
+                if success:
+                    break
             
-            # Check if successful
-            if response.status_code >= 200 and response.status_code < 300:
-                print(f"Successfully created index via REST API: status code {response.status_code}")
-                # No need to call create_or_update_index - we've already created it
+            # If any API call succeeded, return early
+            if success:
                 return  # Exit the function early
-            else:
-                # Print error details for debugging
-                print(f"REST API error: {response.status_code}")
-                print(f"Response: {response.text}")
+                
+            # All API versions failed, log the failure
+            print("All REST API attempts failed")
         except Exception as e:
             print(f"REST API error: {e}")
             # Continue to try the SDK approach as fallback
