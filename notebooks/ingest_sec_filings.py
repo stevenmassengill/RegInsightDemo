@@ -43,6 +43,7 @@ def download_and_extract(entry):
                 f.write(content)
             print(f"Saved {out_path}")
             return out_path
+    print(f"Warning: No matching HTML file found in the zip for accession {entry['accession']}")
     return None
 
 def main():

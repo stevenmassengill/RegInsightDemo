@@ -1,11 +1,11 @@
-
-param prefix string
+param prefix string = 'RegInsightDemo'
 param location string = 'eastus'
 
-resource rg 'Microsoft.Resources/resourceGroups@2022-09-01' = {
-  name: '${prefix}-rg'
-  location: location
-}
+/* 
+  The resource group must be created at the subscription scope.
+  Remove this resource and create the resource group before deploying this Bicep file,
+  or use a separate Bicep file/module at the subscription scope to create it.
+*/
 
 resource search 'Microsoft.Search/searchServices@2023-11-01' = {
   name: '${prefix}search'
@@ -30,7 +30,8 @@ resource openai 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
 }
 
 resource sa 'Microsoft.Storage/storageAccounts@2023-01-01' = {
-  name: '${prefix}sa'
+  // Storage account names must be between 3 and 24 characters, lowercase, and unique
+  name: toLower('${prefix}sa${uniqueString(resourceGroup().id)}')
   location: location
   sku: {
     name: 'Standard_LRS'
@@ -41,13 +42,10 @@ resource sa 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   }
 }
 
-resource pur 'Microsoft.Purview/accounts@2023-02-01-preview' = {
+resource pur 'Microsoft.Purview/accounts@2021-07-01' = {
   name: '${prefix}purview'
   location: location
-  sku: {
-    name: 'Standard'
-  }
   properties: {}
 }
 
-output searchEndpoint string = search.properties.primaryEndpoints.query
+output searchEndpoint string = search.properties.properties.primaryEndpoints.query

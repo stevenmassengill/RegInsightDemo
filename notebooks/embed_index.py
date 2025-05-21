@@ -71,7 +71,9 @@ def main():
     docs = glob.glob(os.path.join(DATA_DIR, "*.html"))
     for html in docs:
         with open(html, "r", encoding="utf-8", errors="ignore") as f:
-            text = re.sub("<[^<]+?>", " ", f.read())  # crude strip tags
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(f.read(), "html.parser")
+            text = soup.get_text()  # extract text content
         for i, chunk in enumerate(chunk_text(text)):
             vector = embed(chunk)
             doc = {"id": f"{Path(html).stem}_{i}", "content": chunk,
