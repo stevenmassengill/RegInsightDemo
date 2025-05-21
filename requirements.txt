@@ -1,0 +1,6 @@
+setuptools
+azure-search-documents>=11.4.0
+openai
+tenacity
+tiktoken
+bs4
