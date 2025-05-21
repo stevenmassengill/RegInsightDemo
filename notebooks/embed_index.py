@@ -5,7 +5,8 @@ import os, glob, json, re
 from pathlib import Path
 import openai
 from azure.core.credentials import AzureKeyCredential
-from azure.search.documents import SearchClient, SearchIndexClient
+from azure.search.documents import SearchClient
+from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.indexes.models import (
     SearchIndex, SimpleField, SearchableField, VectorSearch, HnswVectorSearchAlgorithmConfiguration,
     VectorField
