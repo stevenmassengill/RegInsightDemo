@@ -39,7 +39,7 @@ resource sa 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   // Compose the storage account name from the shortened prefix, 'sa', and a
   // deterministic unique string. This ensures the name meets the length and
   // character requirements while remaining unique within Azure.
-  name: '${saPrefix}sa${uniqueString(resourceGroup().id)}'
+  name: '${saPrefix}sa'
   location: location
   sku: {
     name: 'Standard_LRS'
