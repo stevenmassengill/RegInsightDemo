@@ -132,7 +132,7 @@ def fetch_sample_filings():
                             
                             # Get the filing page with proper headers
                             headers = {
-                                "User-Agent": "RegInsightDemo/1.0 (your.email@example.com)",
+                                "User-Agent": "RegInsightDemo/1.0 (steven.massengill@gmail.com)",
                                 "Accept": "text/html,application/xhtml+xml,application/xml",
                                 "Host": "www.sec.gov"
                             }
