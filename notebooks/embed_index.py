@@ -7,10 +7,36 @@ import openai
 from azure.core.credentials import AzureKeyCredential
 from azure.search.documents import SearchClient
 from azure.search.documents.indexes import SearchIndexClient
-from azure.search.documents.indexes.models import (
-    SearchIndex, SimpleField, SearchableField, VectorSearch,
-    VectorSearchAlgorithmConfiguration, VectorField
-)
+# VectorField is only available in newer versions of the Azure Search SDK. When
+# running against an older version, fall back to using `SearchField` with the
+# appropriate vector search parameters.
+try:
+    from azure.search.documents.indexes.models import (
+        SearchIndex,
+        SimpleField,
+        SearchableField,
+        VectorSearch,
+        VectorSearchAlgorithmConfiguration,
+        VectorField,
+    )
+except ImportError:  # pragma: no cover - support older SDKs
+    from azure.search.documents.indexes.models import (
+        SearchIndex,
+        SimpleField,
+        SearchableField,
+        VectorSearch,
+        VectorSearchAlgorithmConfiguration,
+        SearchField,
+        SearchFieldDataType,
+    )
+
+    def VectorField(name, vector_dimensions, vector_search_configuration):
+        return SearchField(
+            name=name,
+            type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
+            vector_search_dimensions=vector_dimensions,
+            vector_search_configuration=vector_search_configuration,
+        )
 from tenacity import retry, wait_random_exponential, stop_after_attempt
 import tiktoken
 
