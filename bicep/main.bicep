@@ -50,10 +50,4 @@ resource sa 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   }
 }
 
-resource pur 'Microsoft.Purview/accounts@2021-07-01' = {
-  name: '${prefix}purview'
-  location: location
-  properties: {}
-}
-
 output searchEndpoint string = 'https://${search.name}.search.windows.net'

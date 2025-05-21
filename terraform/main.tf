@@ -47,13 +47,6 @@ resource "azurerm_storage_account" "sa" {
   is_hns_enabled           = true
 }
 
-resource "azurerm_purview_account" "purview" {
-  name                = "${var.prefix}purview"
-  location            = var.location
-  resource_group_name = azurerm_resource_group.rg.name
-  sku_name            = "Standard"
-}
-
 # Note: Azure AI Foundry currently provisioned via portal; create resource placeholder
 resource "azurerm_ai_foundry_workspace" "foundry" {
   name                = "${var.prefix}-foundry"

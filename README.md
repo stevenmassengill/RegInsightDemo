@@ -9,7 +9,6 @@ The demo delivers a conversational **RegInsight Copilot** that can:
 2. **Answer natural‑language questions** with GPT‑4‑Turbo + Retrieval‑Augmented Generation.
 3. **Generate charts & PowerPoint** summaries on demand.
 4. **Call the user** via the new Azure AI Voice 'Live' API (optional).
-5. **Log full lineage & compliance** in Microsoft Purview.
 
 ## Folder Structure
 ```
@@ -25,11 +24,11 @@ reginsight_demo/
 
 ## Quick Start (High‑Level)
 
-1. Deploy core resources with **Terraform** or **Bicep** (search, Purview, storage, OpenAI, Foundry).
+1. Deploy core resources with **Terraform** or **Bicep** (search, storage, OpenAI, Foundry).
 2. Upload the YAML in `agents/` to Azure AI Foundry workspace.
 3. Run `notebooks/ingest_sec_filings.py` once to back‑fill recent filings; schedule via Foundry or
    Dataflow Gen2 pipeline in `dataflow/`.
 4. Chat with the published *RegInsight Copilot*; ask for summaries, comparisons, or PPT slides.
-5. Monitor lineage and data access in **Microsoft Purview**; observe metrics in **Fabric** dashboards.
+5. Monitor metrics in **Fabric** dashboards.
 
 See `demo_script.md` for the guided live demo.
