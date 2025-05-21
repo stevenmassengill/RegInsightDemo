@@ -99,9 +99,71 @@ def chunk_text(text, max_tokens=800):
         chunks.append(" ".join(chunk))
     return chunks
 
+def create_simple_index(index_client):
+    """Create a simple index without vector search capabilities."""
+    from azure.search.documents.indexes.models import (
+        SearchIndex,
+        SimpleField,
+        SearchableField
+    )
+    
+    print("Creating a simple index without vector search capabilities")
+    
+    # Create a basic index with text fields only
+    fields = [
+        SimpleField(name="id", type="Edm.String", key=True),
+        SearchableField(name="content", type="Edm.String"),
+        # No vector field
+    ]
+    
+    # Create index without vector search
+    index = SearchIndex(name=INDEX_NAME, fields=fields)
+    
+    try:
+        index_client.create_or_update_index(index)
+        print(f"Successfully created simple index '{INDEX_NAME}'")
+        return True
+    except Exception as e:
+        print(f"Error creating simple index: {e}")
+        return False
+
 def build_index():
-    # First check SDK version and try to determine vector field parameters
+    # First check if the Azure service supports vector search
     print(f"Azure Search SDK version: {sdk_version}")
+    
+    # Check the Azure Search service capabilities
+    try:
+        import requests, json
+        
+        # Get service information to check SKU/capabilities
+        api_version = "2023-07-01-Preview"  # Use a recent version
+        url = f"{SEARCH_ENDPOINT}?api-version={api_version}"
+        headers = {
+            "Content-Type": "application/json",
+            "api-key": SEARCH_KEY
+        }
+        
+        print("Checking if Azure Search service supports vector search...")
+        response = requests.get(url, headers=headers)
+        
+        if response.status_code == 200:
+            service_info = response.json()
+            print(f"Service info retrieved: {json.dumps(service_info, indent=2)}")
+            
+            # Check SKU (vector search requires Standard or higher)
+            sku = service_info.get("sku", {}).get("name", "")
+            print(f"Azure Search SKU: {sku}")
+            
+            if sku.lower() in ["free", "basic"]:
+                print("\n⚠️ WARNING: Vector search is not supported on Free or Basic tier!")
+                print("Vector search requires Standard (S1) tier or higher.")
+                print("Attempting to create a simple index without vector search capabilities.\n")
+                return create_simple_index(index_client)
+        else:
+            print(f"Could not check service tier: {response.status_code}")
+            print(f"Response: {response.text}")
+    except Exception as e:
+        print(f"Error checking service capabilities: {e}")
     
     # Parameters that should work across versions
     dimensions_param = None
@@ -804,28 +866,61 @@ def build_index():
         # Try the SDK approach as fallback
         print("Falling back to SDK approach")
         index_client.create_or_update_index(index)
-        print(f"Successfully created index '{INDEX_NAME}'")
+        print(f"Successfully created index '{INDEX_NAME}' with vector search")
+        return False  # Indicates vector search is enabled
     except Exception as e:
-        print(f"Error creating index: {str(e)}")
+        print(f"Error creating vector search index: {str(e)}")
         import traceback
         traceback.print_exc()
+        
+        # Try creating a simple index as fallback
+        print("\nFalling back to creating a simple index without vector search")
+        return create_simple_index(index_client)
 
 def main():
-    build_index()
+    # Check if we're working with the Basic SKU
+    basic_sku = False
+    
+    # Try to create an index with vector search
+    vector_enabled = build_index()
+    
+    # If build_index returns True, it created a simple index without vector search
+    if vector_enabled is True:
+        basic_sku = True
+        
+    # Create search client
     search_client = SearchClient(
         SEARCH_ENDPOINT, INDEX_NAME, AzureKeyCredential(SEARCH_KEY)
     )
+    
+    # Process and index documents
     docs = glob.glob(os.path.join(DATA_DIR, "*.html"))
     for html in docs:
         with open(html, "r", encoding="utf-8", errors="ignore") as f:
             from bs4 import BeautifulSoup
             soup = BeautifulSoup(f.read(), "html.parser")
             text = soup.get_text()  # extract text content
+        
         for i, chunk in enumerate(chunk_text(text)):
-            vector = embed(chunk)
-            doc = {"id": f"{Path(html).stem}_{i}", "content": chunk,
-                   "vector": vector}
+            # Create document with or without vector embedding
+            if basic_sku:
+                # Basic SKU - no vector field
+                doc = {
+                    "id": f"{Path(html).stem}_{i}", 
+                    "content": chunk
+                }
+            else:
+                # Standard+ SKU - include vector
+                vector = embed(chunk)
+                doc = {
+                    "id": f"{Path(html).stem}_{i}", 
+                    "content": chunk,
+                    "vector": vector
+                }
+            
+            # Upload document
             search_client.upload_documents([doc])
+        
         print(f"Indexed {html}")
 
 if __name__ == "__main__":
