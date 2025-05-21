@@ -8,8 +8,8 @@ from azure.core.credentials import AzureKeyCredential
 from azure.search.documents import SearchClient
 from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.indexes.models import (
-    SearchIndex, SimpleField, SearchableField, VectorSearch, HnswVectorSearchAlgorithmConfiguration,
-    VectorField
+    SearchIndex, SimpleField, SearchableField, VectorSearch,
+    VectorSearchAlgorithmConfiguration, VectorField
 )
 from tenacity import retry, wait_random_exponential, stop_after_attempt
 import tiktoken
@@ -61,8 +61,11 @@ def build_index():
                     vector_search_configuration="myHnsw")
     ]
     vector_search = VectorSearch(
-        algorithms=[HnswVectorSearchAlgorithmConfiguration(
-            name="myHnsw", parameters={"m":4, "efConstruction":400})]
+        algorithms=[VectorSearchAlgorithmConfiguration(
+            name="myHnsw",
+            kind="hnsw",
+            parameters={"m": 4, "efConstruction": 400},
+        )]
     )
     index = SearchIndex(name=INDEX_NAME, fields=fields,
                         vector_search=vector_search)
