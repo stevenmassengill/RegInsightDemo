@@ -5,3 +5,4 @@ tenacity
 tiktoken
 bs4
 packaging
+requests

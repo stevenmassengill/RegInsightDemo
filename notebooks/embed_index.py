@@ -592,68 +592,84 @@ def build_index():
             except Exception as e:
                 print(f"Cannot access kind: {e}")
                 
-        # If the kind is None or empty, try one last approach with direct REST API
-        if not kind:
-            print("Detected empty 'kind' value. Trying direct REST API approach")
-            try:
-                import requests, json
-                
-                # Create simple, valid JSON document for index
-                index_json = {
-                    "name": INDEX_NAME,
-                    "fields": [
+        # Always try the direct REST API approach for consistency
+        print("Using direct REST API approach for index creation - more reliable with newer API requirements")
+        try:
+            import requests, json
+            
+            # Create simple, valid JSON document for index
+            index_json = {
+                "name": INDEX_NAME,
+                "fields": [
+                    {
+                        "name": "id",
+                        "type": "Edm.String",
+                        "key": True,
+                        "searchable": False
+                    },
+                    {
+                        "name": "content",
+                        "type": "Edm.String",
+                        "searchable": True
+                    },
+                    {
+                        "name": "vector",
+                        "type": "Collection(Edm.Single)",
+                        "searchable": False,
+                        "dimensions": 1536,
+                        "vectorSearchProfile": "myHnswProfile"
+                    }
+                ],
+                "vectorSearch": {
+                    "algorithms": [
                         {
-                            "name": "id",
-                            "type": "Edm.String",
-                            "key": True,
-                            "searchable": False
-                        },
-                        {
-                            "name": "content",
-                            "type": "Edm.String",
-                            "searchable": True
-                        },
-                        {
-                            "name": "vector",
-                            "type": "Collection(Edm.Single)",
-                            "searchable": False,
-                            "vectorDimensions": 1536,
-                            "vectorSearchProfile": "myHnsw"
+                            "name": "myHnsw",
+                            "kind": "hnsw",
+                            "parameters": {
+                                "m": 4,
+                                "efConstruction": 400,
+                                "efSearch": 500
+                            }
                         }
                     ],
-                    "vectorSearch": {
-                        "algorithms": [
-                            {
-                                "name": "myHnsw",
-                                "kind": "hnsw",
-                                "parameters": {
-                                    "m": 4,
-                                    "efConstruction": 400,
-                                    "efSearch": 500
-                                }
-                            }
-                        ],
-                        "profiles": [
-                            {
-                                "name": "myHnsw",
-                                "algorithm": "myHnsw"
-                            }
-                        ]
-                    }
+                    "profiles": [
+                        {
+                            "name": "myHnswProfile",
+                            "algorithm": "myHnsw"
+                        }
+                    ]
                 }
-                
-                print(f"Would attempt direct REST API call to create index")
-                print(json.dumps(index_json, indent=2))
-                
-                # Not actually making this call, just showing it for troubleshooting
-                # url = f"{SEARCH_ENDPOINT}/indexes?api-version=2023-11-01"
-                # headers = {"Content-Type": "application/json", "api-key": SEARCH_KEY}
-                # response = requests.put(url, headers=headers, json=index_json)
-                # print(f"API response: {response.status_code}")
-                
-            except Exception as e:
-                print(f"REST API preparation error: {e}")
-        
+            }
+            
+            print(f"Attempting direct REST API call to create index")
+            print(json.dumps(index_json, indent=2))
+            
+            # Make the actual REST API call
+            api_version = "2023-07-01-Preview"  # Use a version known to support vector search
+            url = f"{SEARCH_ENDPOINT}/indexes/{INDEX_NAME}?api-version={api_version}"
+            headers = {
+                "Content-Type": "application/json",
+                "api-key": SEARCH_KEY
+            }
+            
+            print(f"Making PUT request to: {url}")
+            response = requests.put(url, headers=headers, json=index_json)
+            
+            # Check if successful
+            if response.status_code >= 200 and response.status_code < 300:
+                print(f"Successfully created index via REST API: status code {response.status_code}")
+                # No need to call create_or_update_index - we've already created it
+                return  # Exit the function early
+            else:
+                # Print error details for debugging
+                print(f"REST API error: {response.status_code}")
+                print(f"Response: {response.text}")
+        except Exception as e:
+            print(f"REST API error: {e}")
+            # Continue to try the SDK approach as fallback
+            
+        # Try the SDK approach as fallback
+        print("Falling back to SDK approach")
         index_client.create_or_update_index(index)
         print(f"Successfully created index '{INDEX_NAME}'")
     except Exception as e:
