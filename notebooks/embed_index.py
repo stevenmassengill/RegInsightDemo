@@ -163,12 +163,27 @@ def build_index():
                 
                 # Try to set profile name after construction
                 try:
-                    vector_field.vector_search_profile_name = "myHnsw"
-                    print("Set vector_search_profile_name after construction")
+                    # For SDK 11.4.0+, we need profile_name, not configuration
+                    if parse_version(sdk_version) >= parse_version("11.4.0"):
+                        if hasattr(vector_field, "vector_search_profile_name"):
+                            vector_field.vector_search_profile_name = "myHnsw"
+                            print("Set vector_search_profile_name after construction")
+                        # Remove configuration in newer SDK versions, it conflicts
+                        if hasattr(vector_field, "vector_search_configuration"):
+                            delattr(vector_field, "vector_search_configuration")
+                    else:
+                        # For older SDK versions, use configuration
+                        if hasattr(vector_field, "vector_search_configuration"):
+                            vector_field.vector_search_configuration = "myHnsw"
+                            print("Set vector_search_configuration for older SDK")
                 except AttributeError:
+                    # Try additional properties as last resort
                     if hasattr(vector_field, 'additional_properties'):
                         vector_field.additional_properties["vectorSearchProfile"] = "myHnsw"
-                        print("Set vectorSearchProfile via additional_properties") 
+                        # Use only one approach in newer versions
+                        if parse_version(sdk_version) < parse_version("11.4.0"):
+                            vector_field.additional_properties["vectorSearchConfiguration"] = "myHnsw"
+                        print("Set vector search properties via additional_properties") 
             
             fields = [
                 SimpleField(name="id", type="Edm.String", key=True),
@@ -235,22 +250,26 @@ def build_index():
                 
                 # Set needed vector search properties
                 try:
-                    # The "profile name" is what determines how the vector field is used in search
-                    # Set vector_search_profile_name first (newer API requirement)
+                    # In 11.4.0+, only profile_name is needed, not configuration
+                    # Set vector_search_profile_name - this is the link to the algorithm
                     if hasattr(vector_field, "vector_search_profile_name"):
                         vector_field.vector_search_profile_name = "myHnsw"
                         print("Set vector_search_profile_name property")
                     
-                    # Then set configuration
-                    if hasattr(vector_field, "vector_search_configuration"):
+                    # For backward compatibility, set configuration too
+                    # In newer versions, only ONE of these should be set
+                    if hasattr(vector_field, "vector_search_configuration") and sdk_version < "11.4.0":
                         vector_field.vector_search_configuration = "myHnsw"
                         print("Set vector_search_configuration property")
                 except AttributeError as e:
                     print(f"Error setting vector properties: {e}")
                     # Try alternate approach with additional_properties
                     if hasattr(vector_field, 'additional_properties'):
+                        # In 11.4.0+, only set profile, not configuration
                         vector_field.additional_properties["vectorSearchProfile"] = "myHnsw"
-                        vector_field.additional_properties["vectorSearchConfiguration"] = "myHnsw"
+                        # For older versions, set both for compatibility
+                        if parse_version(sdk_version) < parse_version("11.4.0"):
+                            vector_field.additional_properties["vectorSearchConfiguration"] = "myHnsw"
                         print("Set vector search properties via additional_properties")
             else:
                 # Fallback - create with best guess parameters
@@ -307,19 +326,37 @@ def build_index():
         # Create a minimal, simplified vector search configuration that works with most SDK versions
         from azure.search.documents.indexes.models import VectorSearch, VectorSearchAlgorithmConfiguration
         
-        # Create a fresh, minimal configuration
+        # Create a fresh, minimal vector search configuration
         simplified_algo = VectorSearchAlgorithmConfiguration(name="myHnsw")
         
-        # Force the kind property to be set directly in the _attribute_map
-        if hasattr(simplified_algo, '_attribute_map') and isinstance(simplified_algo._attribute_map, dict):
-            print("Using _attribute_map approach")
-            if 'kind' in simplified_algo._attribute_map:
-                simplified_algo.kind = "hnsw"
-        # Direct dict assignment as backup
-        elif hasattr(simplified_algo, '__dict__'):
-            simplified_algo.__dict__["kind"] = "hnsw"
+        # Force the kind property to be set
+        simplified_algo.kind = "hnsw"
         
+        # Add parameters if possible
+        try:
+            from azure.search.documents.indexes.models import HnswParameters
+            simplified_algo.hnsw_parameters = HnswParameters(
+                m=4,
+                ef_construction=400
+            )
+        except (ImportError, AttributeError):
+            pass
+            
         simplified_vector_search = VectorSearch(algorithms=[simplified_algo])
+        
+        # Now make sure vector field properties are aligned with this configuration
+        for field in fields:
+            if field.name == "vector":
+                # For SDK 11.4.0+, use profile_name instead of configuration
+                if hasattr(field, "vector_search_profile_name"):
+                    # Make sure it matches our algorithm name exactly
+                    field.vector_search_profile_name = "myHnsw"
+                    # Remove configuration in newer SDK to avoid conflicts
+                    if hasattr(field, "vector_search_configuration") and parse_version(sdk_version) >= parse_version("11.4.0"):
+                        try:
+                            delattr(field, "vector_search_configuration")
+                        except (AttributeError, TypeError):
+                            pass
         
         # Make sure field properties are properly set for vector search
         for i, field in enumerate(fields):
@@ -355,8 +392,78 @@ def build_index():
                 except Exception as e:
                     print(f"Error setting vector field properties: {e}")
         
-        # Create the index with simplified vector search
-        index = SearchIndex(name=INDEX_NAME, fields=fields, vector_search=simplified_vector_search)
+        # Configure vector search explicitly for the index
+        # Try multiple approaches to ensure vector search configuration is properly attached
+        
+        from azure.search.documents.indexes.models import (
+            SearchIndex, 
+            VectorSearch, 
+            VectorSearchAlgorithmConfiguration
+        )
+        
+        # Create a fixed vector search configuration
+        try:
+            vector_search_algo = VectorSearchAlgorithmConfiguration(
+                name="myHnsw",
+                kind="hnsw"
+            )
+            
+            # Try to set parameters if supported
+            try:
+                from azure.search.documents.indexes.models import HnswParameters
+                vector_search_algo.hnsw_parameters = HnswParameters(
+                    m=4,
+                    ef_construction=400
+                )
+                print("Set hnsw_parameters with HnswParameters object")
+            except (ImportError, AttributeError):
+                # Parameters might be a dictionary or separate properties
+                if hasattr(vector_search_algo, "parameters"):
+                    vector_search_algo.parameters = {"m": 4, "efConstruction": 400}
+                    print("Set parameters as dictionary")
+            
+            # Debug output for the algorithm configuration
+            print("\nVector search algorithm configuration:")
+            print(f"  Name: {vector_search_algo.name}")
+            print(f"  Kind: {vector_search_algo.kind}")
+            
+            # Print all attributes of the algorithm
+            print("  All attributes:")
+            for attr_name in dir(vector_search_algo):
+                if not attr_name.startswith('_') and attr_name not in ('name', 'kind'):
+                    try:
+                        value = getattr(vector_search_algo, attr_name)
+                        if not callable(value):
+                            print(f"    {attr_name}: {value}")
+                    except AttributeError:
+                        pass
+            
+            # Create vector search with this algorithm
+            vector_search = VectorSearch(algorithms=[vector_search_algo])
+            
+            # Check if all fields with vector_search_profile_name have a matching algorithm
+            for field in fields:
+                if hasattr(field, 'vector_search_profile_name') and field.vector_search_profile_name:
+                    profile_name = field.vector_search_profile_name
+                    algorithms = [a.name for a in vector_search.algorithms]
+                    print(f"Field {field.name} uses profile {profile_name}, available algorithms: {algorithms}")
+                    # Verify the profile exists in algorithms
+                    if profile_name not in algorithms:
+                        print(f"WARNING: Field uses profile {profile_name} which is not in algorithms!")
+            
+            # Create index with this vector search configuration
+            index = SearchIndex(
+                name=INDEX_NAME, 
+                fields=fields, 
+                vector_search=vector_search
+            )
+            
+            print(f"Created index with explicit vector search configuration")
+            
+        except Exception as e:
+            print(f"Error creating vector search configuration: {e}")
+            # Fall back to simplified version
+            index = SearchIndex(name=INDEX_NAME, fields=fields, vector_search=simplified_vector_search)
         
         # Try to serialize the configuration to see what's actually being sent
         try:
