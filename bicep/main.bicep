@@ -1,4 +1,7 @@
 param prefix string = 'RegInsightDemo'
+
+// Convert prefix to lower case for resources that require lower-case names
+var lowerPrefix = toLower(prefix)
 param location string = 'eastus'
 
 // Storage account names must be 24 characters or less. We combine a shortened
@@ -17,7 +20,7 @@ var saSuffix = uniqueString(resourceGroup().id)
 */
 
 resource search 'Microsoft.Search/searchServices@2023-11-01' = {
-  name: '${prefix}search'
+  name: '${lowerPrefix}search'
   location: location
   sku: {
     name: 'basic'
@@ -29,7 +32,7 @@ resource search 'Microsoft.Search/searchServices@2023-11-01' = {
 }
 
 resource openai 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
-  name: '${prefix}openai'
+  name: '${lowerPrefix}openai'
   location: location
   kind: 'OpenAI'
   sku: {

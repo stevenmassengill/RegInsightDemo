@@ -28,6 +28,7 @@ resource "random_string" "sa_suffix" {
 
 locals {
   sa_prefix = substr(lower(var.prefix), 0, 9)
+  lower_prefix = lower(var.prefix)
 }
 
 resource "azurerm_resource_group" "rg" {
@@ -36,7 +37,7 @@ resource "azurerm_resource_group" "rg" {
 }
 
 resource "azurerm_search_service" "search" {
-  name                = "${var.prefix}search"
+  name                = "${local.lower_prefix}search"
   resource_group_name = azurerm_resource_group.rg.name
   location            = var.location
   sku                 = "basic"
@@ -45,7 +46,7 @@ resource "azurerm_search_service" "search" {
 }
 
 resource "azurerm_cognitive_account" "openai" {
-  name                = "${var.prefix}openai"
+  name                = "${local.lower_prefix}openai"
   resource_group_name = azurerm_resource_group.rg.name
   location            = var.location
   kind                = "OpenAI"
@@ -63,7 +64,7 @@ resource "azurerm_storage_account" "sa" {
 
 # Note: Azure AI Foundry currently provisioned via portal; create resource placeholder
 resource "azurerm_ai_foundry_workspace" "foundry" {
-  name                = "${var.prefix}-foundry"
+  name                = "${local.lower_prefix}-foundry"
   location            = var.location
   resource_group_name = azurerm_resource_group.rg.name
 }
