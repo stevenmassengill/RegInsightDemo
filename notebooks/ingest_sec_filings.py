@@ -14,7 +14,7 @@ OUTPUT_DIR = os.getenv("OUTPUT_DIR", "./data/sec_filings")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def fetch_feed():
-    r = requests.get(FEED_URL, headers={"User-Agent": "RegInsightDemo/1.0"})
+    r = requests.get(FEED_URL, headers={"User-Agent": "RegInsightDemo/1.0 (your.email@example.com)"})
     r.raise_for_status()
     return r.text
 
@@ -46,16 +46,62 @@ def download_and_extract(entry):
     print(f"Warning: No matching HTML file found in the zip for accession {entry['accession']}")
     return None
 
-def main():
-    feed_xml = fetch_feed()
-    entries = parse_entries(feed_xml)
-    for e in entries:
+def fetch_sample_filings():
+    """Fallback function to get sample 10-K filings if SEC API fails"""
+    print("Using fallback method to download sample filings...")
+    
+    # Sample 10-K filings (Apple and Microsoft)
+    samples = [
+        {"accession": "0000320193-23-000077", "cik": "0000320193", 
+         "href": "https://www.sec.gov/Archives/edgar/data/320193/000032019323000077/0000320193-23-000077-index.htm",
+         "title": "APPLE INC (0000320193) 10-K"},
+        {"accession": "0001564590-23-024301", "cik": "0000789019", 
+         "href": "https://www.sec.gov/Archives/edgar/data/789019/000156459023024301/0001564590-23-024301-index.htm",
+         "title": "MICROSOFT CORP (0000789019) 10-K"}
+    ]
+    
+    for e in samples:
         outfile = os.path.join(OUTPUT_DIR, f"{e['accession']}.html")
         if not os.path.exists(outfile):
             try:
-                download_and_extract(e)
+                # Get the filing page
+                r = requests.get(e["href"], headers={"User-Agent": "RegInsightDemo/1.0 (your.email@example.com)"})
+                r.raise_for_status()
+                soup = BeautifulSoup(r.text, "html.parser")
+                
+                # Find the actual 10-K document link
+                for link in soup.find_all("a"):
+                    if link.text and ("10-K" in link.text or ".htm" in link.text.lower()) and "10-K" in link.get("href", ""):
+                        doc_url = "https://www.sec.gov" + link.get("href")
+                        print(f"Found 10-K link: {doc_url}")
+                        
+                        # Download the actual 10-K HTML
+                        doc_resp = requests.get(doc_url, headers={"User-Agent": "RegInsightDemo/1.0 (your.email@example.com)"})
+                        doc_resp.raise_for_status()
+                        
+                        # Save the HTML content
+                        with open(outfile, "wb") as f:
+                            f.write(doc_resp.content)
+                        print(f"Saved {outfile}")
+                        break
             except Exception as ex:
-                print("Error:", ex)
+                print(f"Error with sample {e['accession']}: {ex}")
+
+def main():
+    try:
+        feed_xml = fetch_feed()
+        entries = parse_entries(feed_xml)
+        for e in entries:
+            outfile = os.path.join(OUTPUT_DIR, f"{e['accession']}.html")
+            if not os.path.exists(outfile):
+                try:
+                    download_and_extract(e)
+                except Exception as ex:
+                    print("Error:", ex)
+    except Exception as ex:
+        print(f"Error fetching from SEC API: {ex}")
+        print("Falling back to sample filings...")
+        fetch_sample_filings()
 
 if __name__ == "__main__":
     main()
