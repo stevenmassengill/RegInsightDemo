@@ -6,6 +6,10 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 3.100"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.5"
+    }
   }
 }
 
@@ -15,6 +19,16 @@ provider "azurerm" {
 
 variable "prefix" { type = string }
 variable "location" { type = string default = "eastus" }
+
+resource "random_string" "sa_suffix" {
+  length  = 13
+  upper   = false
+  special = false
+}
+
+locals {
+  sa_prefix = substr(lower(var.prefix), 0, 9)
+}
 
 resource "azurerm_resource_group" "rg" {
   name     = "${var.prefix}-rg"
@@ -39,7 +53,7 @@ resource "azurerm_cognitive_account" "openai" {
 }
 
 resource "azurerm_storage_account" "sa" {
-  name                     = "${var.prefix}sa"
+  name                     = "${local.sa_prefix}sa${random_string.sa_suffix.result}"
   resource_group_name      = azurerm_resource_group.rg.name
   location                 = var.location
   account_tier             = "Standard"
