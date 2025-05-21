@@ -32,3 +32,13 @@ reginsight_demo/
 5. Monitor metrics in **Fabric** dashboards.
 
 See `demo_script.md` for the guided live demo.
+
+## Setup
+
+Before running the notebooks ensure the latest Azure Search SDK is installed:
+
+```bash
+pip install --upgrade azure-search-documents
+```
+
+Vector search requires version 11.4.0 or newer.

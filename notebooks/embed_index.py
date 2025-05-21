@@ -7,6 +7,19 @@ import openai
 from azure.core.credentials import AzureKeyCredential
 from azure.search.documents import SearchClient
 from azure.search.documents.indexes import SearchIndexClient
+from pkg_resources import get_distribution, parse_version
+
+try:
+    sdk_version = get_distribution("azure-search-documents").version
+except Exception:
+    sdk_version = "unknown"
+
+MIN_VERSION = "11.4.0"
+if sdk_version == "unknown" or parse_version(sdk_version) < parse_version(MIN_VERSION):
+    raise RuntimeError(
+        f"azure-search-documents>={MIN_VERSION} is required for vector search (found {sdk_version}). "
+        "Run 'pip install --upgrade azure-search-documents' and retry."
+    )
 # VectorField is only available in newer versions of the Azure Search SDK. When
 # running against an older version, fall back to using `SearchField` with the
 # appropriate vector search parameters.
