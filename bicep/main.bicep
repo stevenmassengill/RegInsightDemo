@@ -48,4 +48,4 @@ resource pur 'Microsoft.Purview/accounts@2021-07-01' = {
   properties: {}
 }
 
-output searchEndpoint string = search.properties.properties.primaryEndpoints.query
+output searchEndpoint string = 'https://${search.name}.search.windows.net'
