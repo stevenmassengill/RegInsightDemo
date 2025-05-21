@@ -3,7 +3,7 @@
 
 import os, glob, json, re
 from pathlib import Path
-from azure.ai.openai import OpenAIClient
+import openai
 from azure.core.credentials import AzureKeyCredential
 from azure.search.documents import SearchClient, SearchIndexClient
 from azure.search.documents.indexes.models import (
@@ -23,15 +23,19 @@ INDEX_NAME = os.getenv("SEARCH_INDEX", "sec-filings-index")
 DATA_DIR = os.getenv("DATA_DIR", "./data/sec_filings")
 
 # ---- Helpers ----
-client = OpenAIClient(OPENAI_ENDPOINT, AzureKeyCredential(OPENAI_KEY))
+openai.api_type    = "azure"
+openai.api_base    = OPENAI_ENDPOINT
+openai.api_key     = OPENAI_KEY
+openai.api_version = "2024-02-15-preview"   # or the API version you deployed
 tokenizer = tiktoken.encoding_for_model("text-embedding-ada-002")
 
 @retry(wait=wait_random_exponential(min=1, max=10), stop=stop_after_attempt(6))
 def embed(text):
-    resp = client.embeddings.create(
-        input=[text], model=DEPLOYMENT
+    resp = openai.Embedding.create(
+        engine=DEPLOYMENT,
+        input=[text]
     )
-    return resp.data[0].embedding
+    return resp["data"][0]["embedding"]
 
 def chunk_text(text, max_tokens=800):
     words = text.split()
