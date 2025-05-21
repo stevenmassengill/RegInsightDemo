@@ -103,62 +103,98 @@ def build_index():
     index_client = SearchIndexClient(
         SEARCH_ENDPOINT, AzureKeyCredential(SEARCH_KEY))
     
-    # Check if we're using the newer SDK with VectorField
-    using_vector_field = 'VectorField' in globals()
-    
-    # Different initialization based on SDK version
-    if using_vector_field:
-        fields = [
-            SimpleField(name="id", type="Edm.String", key=True),
-            SearchableField(name="content", type="Edm.String"),
-            VectorField(name="vector", vector_dimensions=1536,
-                        vector_search_configuration="myHnsw")
-        ]
-        vector_search = VectorSearch(
-            algorithms=[VectorSearchAlgorithmConfiguration(
-                name="myHnsw",
-                kind="hnsw",
-                parameters={"m": 4, "efConstruction": 400},
-            )]
-        )
-    else:
-        # For older SDK without native vector support
-        from azure.search.documents.indexes.models import (
-            SearchField,
-            SearchFieldDataType,
-            HnswParameters,
-        )
-        fields = [
-            SimpleField(name="id", type="Edm.String", key=True),
-            SearchableField(name="content", type="Edm.String"),
-            SearchField(
-                name="vector",
-                type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
-                vector_search_dimensions=1536,
-                vector_search_configuration="myHnsw"
+    try:
+        # Import all necessary models directly here to ensure we get the right ones
+        # for the SDK version we're actually using
+        try:
+            from azure.search.documents.indexes.models import (
+                SearchIndex,
+                SimpleField,
+                SearchableField,
+                VectorSearch,
+                VectorSearchAlgorithmConfiguration,
+                VectorField,
             )
-        ]
-        vector_search = VectorSearch(
-            algorithms=[
-                VectorSearchAlgorithmConfiguration(
-                    name="myHnsw",
-                    kind="hnsw",
-                    hnsw_parameters=HnswParameters(
-                        m=4,
-                        ef_construction=400
-                    )
+            
+            fields = [
+                SimpleField(name="id", type="Edm.String", key=True),
+                SearchableField(name="content", type="Edm.String"),
+                VectorField(
+                    name="vector", 
+                    vector_dimensions=1536,
+                    vector_search_configuration="myHnsw"
                 )
             ]
-        )
-    
-    index = SearchIndex(name=INDEX_NAME, fields=fields,
-                        vector_search=vector_search)
-    
-    try:
+            
+            vector_search = VectorSearch(
+                algorithms=[
+                    VectorSearchAlgorithmConfiguration(
+                        name="myHnsw",
+                        kind="hnsw",
+                    )
+                ]
+            )
+            # Try to set parameters in a way that works with this SDK version
+            try:
+                vector_search.algorithms[0].hnsw_parameters.m = 4
+                vector_search.algorithms[0].hnsw_parameters.ef_construction = 400
+            except (AttributeError, TypeError):
+                # Different SDK versions have different parameter structures
+                print("Using alternative parameter approach")
+                
+        except (ImportError, AttributeError):
+            # Older SDK version
+            from azure.search.documents.indexes.models import (
+                SearchIndex,
+                SimpleField,
+                SearchableField,
+                VectorSearch,
+                VectorSearchAlgorithmConfiguration,
+                SearchField,
+                SearchFieldDataType,
+            )
+            
+            print("Using SearchField-based approach")
+            fields = [
+                SimpleField(name="id", type="Edm.String", key=True),
+                SearchableField(name="content", type="Edm.String"),
+                SearchField(
+                    name="vector",
+                    type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
+                    dimensions=1536,
+                    vector_search_configuration="myHnsw"
+                )
+            ]
+            
+            vector_search = VectorSearch(
+                algorithms=[
+                    VectorSearchAlgorithmConfiguration(
+                        name="myHnsw",
+                        kind="hnsw"
+                    )
+                ]
+            )
+            # Only set attributes that are known to exist
+            algo = vector_search.algorithms[0]
+            try:
+                if hasattr(algo, 'hnsw_parameters'):
+                    algo.hnsw_parameters.m = 4
+                    algo.hnsw_parameters.ef_construction = 400
+            except (AttributeError, TypeError):
+                print("Warning: Could not set HNSW parameters")
+
+        index = SearchIndex(name=INDEX_NAME, fields=fields, vector_search=vector_search)
+        
+        # Print detailed information about our configuration
+        print(f"Creating index with fields: {[f.name for f in fields]}")
+        print(f"Vector search configuration: {vector_search.algorithms[0].name}, Kind: {vector_search.algorithms[0].kind}")
+        
         index_client.create_or_update_index(index)
         print(f"Successfully created index '{INDEX_NAME}'")
     except Exception as e:
-        print(f"Error creating index: {e}")
+        print(f"Error creating index: {str(e)}")
+        import traceback
+        traceback.print_exc()
 
 def main():
     build_index()
