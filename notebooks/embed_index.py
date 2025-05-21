@@ -7,10 +7,65 @@ import openai
 from azure.core.credentials import AzureKeyCredential
 from azure.search.documents import SearchClient
 from azure.search.documents.indexes import SearchIndexClient
-from azure.search.documents.indexes.models import (
-    SearchIndex, SimpleField, SearchableField, VectorSearch,
-    VectorSearchAlgorithmConfiguration, VectorField
-)
+# VectorField is only available in newer versions of the Azure Search SDK. When
+# running against an older version, fall back to using `SearchField` with the
+# appropriate vector search parameters.
+try:
+    from azure.search.documents.indexes.models import (
+        SearchIndex,
+        SimpleField,
+        SearchableField,
+        VectorSearch,
+        VectorSearchAlgorithmConfiguration,
+        VectorField,
+    )
+
+    def _hnsw_config(name: str):
+        return VectorSearchAlgorithmConfiguration(
+            name=name,
+            kind="hnsw",
+            parameters={"m": 4, "efConstruction": 400},
+        )
+except ImportError:  # pragma: no cover - support older SDKs
+    from azure.search.documents.indexes.models import (
+        SearchIndex,
+        SimpleField,
+        SearchableField,
+        VectorSearch,
+    )
+
+    # Older packages expose specific algorithm configuration classes and may not
+    # have a VectorField type at all.
+    try:
+        from azure.search.documents.indexes.models import (
+            HnswVectorSearchAlgorithmConfiguration,
+            SearchField,
+            SearchFieldDataType,
+        )
+        from inspect import signature
+
+        sig = signature(SearchField.__init__)
+        if "vector_search_dimensions" not in sig.parameters:
+            raise ImportError("vector search not supported")
+
+        def VectorField(name, vector_dimensions, vector_search_configuration):
+            return SearchField(
+                name=name,
+                type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
+                vector_search_dimensions=vector_dimensions,
+                vector_search_configuration=vector_search_configuration,
+            )
+
+        def _hnsw_config(name: str):
+            return HnswVectorSearchAlgorithmConfiguration(
+                name=name,
+                parameters={"m": 4, "efConstruction": 400},
+            )
+    except Exception as e:  # pragma: no cover - unsupported old SDK
+        raise ImportError(
+            "The installed azure-search-documents package is too old to "
+            "support vector search features. Please upgrade." 
+        ) from e
 from tenacity import retry, wait_random_exponential, stop_after_attempt
 import tiktoken
 
@@ -61,11 +116,7 @@ def build_index():
                     vector_search_configuration="myHnsw")
     ]
     vector_search = VectorSearch(
-        algorithms=[VectorSearchAlgorithmConfiguration(
-            name="myHnsw",
-            kind="hnsw",
-            parameters={"m": 4, "efConstruction": 400},
-        )]
+        algorithms=[_hnsw_config("myHnsw")]
     )
     index = SearchIndex(name=INDEX_NAME, fields=fields,
                         vector_search=vector_search)
