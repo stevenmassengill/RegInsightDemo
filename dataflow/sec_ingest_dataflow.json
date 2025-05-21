@@ -1,0 +1,34 @@
+{
+  "name": "sec_ingest_dataflow",
+  "description": "Dataflow Gen2 pipeline to ingest latest SEC filings feed and stage into OneLake.",
+  "activities": [
+    {
+      "type": "Http",
+      "name": "Fetch EDGAR Feed",
+      "settings": {
+        "url": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=10-K&count=40&output=atom"
+      }
+    },
+    {
+      "type": "ForEach",
+      "name": "Iterate Filings",
+      "activities": [
+        {
+          "type": "Copy",
+          "name": "Download Zip",
+          "settings": {}
+        },
+        {
+          "type": "Copy",
+          "name": "Extract HTML",
+          "settings": {}
+        },
+        {
+          "type": "Copy",
+          "name": "Save to OneLake",
+          "settings": {}
+        }
+      ]
+    }
+  ]
+}

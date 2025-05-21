@@ -1,0 +1,34 @@
+
+# Azure AI Foundry agent definitions (YAML)
+# Upload via Foundry portal or CLI
+
+version: 1
+agents:
+  - name: QueryAnswerAgent
+    description: |
+      Answers NL questions on SEC filings using RAG over Azure AI Search.
+    entry:
+      type: chat
+      model: gpt-4o-mini
+      retrieval:
+        search_endpoint: ${SEARCH_ENDPOINT}
+        search_index: ${SEARCH_INDEX}
+      tools: []
+    identity:
+      type: managed
+      name: query-answer-agent
+
+  - name: ReportWriterAgent
+    description: |
+      Generates PowerPoint summaries by calling python‑pptx via ToolCall.
+    entry:
+      type: chat
+      model: gpt-4o-mini
+      tools:
+        - name: create_ppt
+          description: "Create a summary pptx and return storage URL"
+          executor: python
+          script: tools/create_ppt.py
+    identity:
+      type: managed
+      name: report-writer-agent
